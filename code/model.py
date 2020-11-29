@@ -33,7 +33,7 @@ import captioning.models
 # class BERT_encoder:    
 #     def __init__(self):
 #         # self._init_processors()
-#         self.bert_model = spacy.load("en_pytt_distilbertbaseuncased_lg")
+#         self.bert_model = spacy.load("en_trf_distilbertbaseuncased_lg")
 #     def __call__(self, texts):
 #         docs = self.bert_model(texts)
 #         sentence_emb = docs.vector

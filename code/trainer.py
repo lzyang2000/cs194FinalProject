@@ -54,7 +54,7 @@ class condGANTrainer(object):
         # ###################encoders######################################## #
         if cfg.TRAIN.NET_E == 'BERT':
             print('Using BERT and COCO image captions')
-            text_encoder = spacy.load("en_pytt_distilbertbaseuncased_lg")
+            text_encoder = spacy.load("en_trf_distilbertbaseuncased_lg")
             image_caption = ImageCaption() 
         else:
             image_encoder = CNN_ENCODER(cfg.TEXT.EMBEDDING_DIM)
@@ -175,7 +175,7 @@ class condGANTrainer(object):
         #
         for i in range(len(netsD)):
             netD = netsD[i]
-            torch.save(netD.state_dict(),
+            torch.save(netD.state_diFct(),
                 '%s/netD%d.pth' % (self.model_dir, i))
         print('Save G/Ds models.')
 
@@ -277,7 +277,7 @@ class condGANTrainer(object):
                         word_emb = [w.vector for w in i]
                         sent_len =  len(i)
                         if sent_len<max_sent_len:
-                            word_emb.append([0]*(max_sent_len-sent_len))
+                            word_emb+=[0]*(max_sent_len-sent_len)
                         words_embs.append(word_emb)
                     words_embs = torch.Tensor(words_embs).cuda()
                     words_embs = words_embs.permute(0,2,1)
@@ -285,11 +285,7 @@ class condGANTrainer(object):
                     hidden = text_encoder.init_hidden(batch_size)
                     # words_embs: batch_size x nef x seq_len
                     # sent_emb: batch_size x nef
-                    # print(captions)
-                    # text_encoder = spacy.load("en_pytt_distilbertbaseuncased_lg")
                     words_embs, sent_emb = text_encoder(captions, cap_lens, hidden) #RNN_ENCODER [14,256,12] [14,256]
-                print("Emb shapes:",words_embs.shape,sent_emb.shape)
-                print("Emb devices", words_embs.device, sent_emb.device)
                 words_embs, sent_emb = words_embs.detach(), sent_emb.detach()
                 mask = (captions == 0)
                 num_words = words_embs.size(2)

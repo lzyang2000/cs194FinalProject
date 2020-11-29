@@ -146,7 +146,7 @@ import spacy
 import torch
 spacy.prefer_gpu()
 torch.set_default_tensor_type("torch.cuda.FloatTensor")
-bert_model = spacy.load("en_pytt_distilbertbaseuncased_lg")
+bert_model = spacy.load("en_trf_distilbertbaseuncased_lg")
 texts = ["This is a text", "These are lots of texts", "..."]
 docs = list(bert_model.pipe(texts))
 sentence_emb = docs[0].vector
