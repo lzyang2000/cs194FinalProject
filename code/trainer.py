@@ -13,7 +13,7 @@ from miscc.config import cfg
 from miscc.utils import mkdir_p
 from miscc.utils import build_super_images, build_super_images2
 from miscc.utils import weights_init, load_params, copy_G_params
-from model import G_DCGAN, G_NET
+from model import G_DCGAN, G_NET, ImageCaption
 from datasets import prepare_data
 from model import RNN_ENCODER, CNN_ENCODER
 
@@ -23,6 +23,11 @@ import os
 import time
 import numpy as np
 import sys
+
+import spacy
+# if cfg.CUDA:
+#     spacy.prefer_gpu()
+#     torch.set_default_tensor_type("torch.cuda.FloatTensor")
 
 # ################# Text to image task############################ #
 class condGANTrainer(object):
@@ -47,30 +52,31 @@ class condGANTrainer(object):
 
     def build_models(self):
         # ###################encoders######################################## #
-        if cfg.TRAIN.NET_E == '':
-            print('Error: no pretrained text-image encoders')
-            return
+        if cfg.TRAIN.NET_E == 'BERT':
+            print('Using BERT and COCO image captions')
+            text_encoder = spacy.load("en_pytt_distilbertbaseuncased_lg")
+            image_caption = ImageCaption() 
+        else:
+            image_encoder = CNN_ENCODER(cfg.TEXT.EMBEDDING_DIM)
+            img_encoder_path = cfg.TRAIN.NET_E.replace('text_encoder', 'image_encoder')
+            state_dict = \
+                torch.load(img_encoder_path, map_location=lambda storage, loc: storage)
+            image_encoder.load_state_dict(state_dict)
+            for p in image_encoder.parameters():
+                p.requires_grad = False
+            print('Load image encoder from:', img_encoder_path)
+            image_encoder.eval()
 
-        image_encoder = CNN_ENCODER(cfg.TEXT.EMBEDDING_DIM)
-        img_encoder_path = cfg.TRAIN.NET_E.replace('text_encoder', 'image_encoder')
-        state_dict = \
-            torch.load(img_encoder_path, map_location=lambda storage, loc: storage)
-        image_encoder.load_state_dict(state_dict)
-        for p in image_encoder.parameters():
-            p.requires_grad = False
-        print('Load image encoder from:', img_encoder_path)
-        image_encoder.eval()
-
-        text_encoder = \
-            RNN_ENCODER(self.n_words, nhidden=cfg.TEXT.EMBEDDING_DIM)
-        state_dict = \
-            torch.load(cfg.TRAIN.NET_E,
-                       map_location=lambda storage, loc: storage)
-        text_encoder.load_state_dict(state_dict)
-        for p in text_encoder.parameters():
-            p.requires_grad = False
-        print('Load text encoder from:', cfg.TRAIN.NET_E)
-        text_encoder.eval()
+            text_encoder = \
+                RNN_ENCODER(self.n_words, nhidden=cfg.TEXT.EMBEDDING_DIM)
+            state_dict = \
+                torch.load(cfg.TRAIN.NET_E,
+                        map_location=lambda storage, loc: storage)
+            text_encoder.load_state_dict(state_dict)
+            for p in text_encoder.parameters():
+                p.requires_grad = False
+            print('Load text encoder from:', cfg.TRAIN.NET_E)
+            text_encoder.eval()
 
         # #######################generator and discriminators############## #
         netsD = []
@@ -121,13 +127,17 @@ class condGANTrainer(object):
                         torch.load(Dname, map_location=lambda storage, loc: storage)
                     netsD[i].load_state_dict(state_dict)
         # ########################################################### #
-        if cfg.CUDA:
-            text_encoder = text_encoder.cuda()
-            image_encoder = image_encoder.cuda()
+        if cfg.CUDA: 
+            if cfg.TRAIN.NET_E != 'BERT':
+                text_encoder = text_encoder.cuda()
+                image_encoder = image_encoder.cuda()
             netG.cuda()
             for i in range(len(netsD)):
                 netsD[i].cuda()
-        return [text_encoder, image_encoder, netG, netsD, epoch]
+        if cfg.TRAIN.NET_E == 'BERT':
+            return [text_encoder, image_caption, netG, netsD, epoch]
+        else:
+            return [text_encoder, image_encoder, netG, netsD, epoch]
 
     def define_optimizers(self, netG, netsD):
         optimizersD = []
@@ -216,7 +226,10 @@ class condGANTrainer(object):
             im.save(fullpath)
 
     def train(self):
-        text_encoder, image_encoder, netG, netsD, start_epoch = self.build_models()
+        if cfg.TRAIN.NET_E == 'BERT':
+            text_encoder, image_caption, netG, netsD, start_epoch = self.build_models()
+        else:
+            text_encoder, image_encoder, netG, netsD, start_epoch = self.build_models()
         avg_param_G = copy_G_params(netG)
         optimizerG, optimizersD = self.define_optimizers(netG, netsD)
         real_labels, fake_labels, match_labels = self.prepare_labels()
@@ -244,11 +257,39 @@ class condGANTrainer(object):
                 ######################################################
                 data = data_iter.next()
                 imgs, captions, cap_lens, class_ids, keys = prepare_data(data)
-
-                hidden = text_encoder.init_hidden(batch_size)
-                # words_embs: batch_size x nef x seq_len
-                # sent_emb: batch_size x nef
-                words_embs, sent_emb = text_encoder(captions, cap_lens, hidden)
+                if cfg.TRAIN.NET_E == 'BERT':
+                    sentence_list = []
+                    for i in range(cfg.TRAIN.BATCH_SIZE):
+                        cap = captions[i].data.cpu().numpy()
+                        sentence = []
+                        for j in range(len(cap)):
+                            if cap[j] == 0:
+                                break
+                            word = self.ixtoword[cap[j]].encode('ascii', 'ignore').decode('ascii')
+                            sentence.append(word)
+                        sentence=" ".join(sentence)
+                        sentence_list.append(sentence)
+                    embs =  list(text_encoder.pipe(sentence_list))
+                    sent_emb = torch.Tensor([i.vector for i in embs]).cuda()
+                    max_sent_len = max(1,len(max(embs,key=len)))
+                    words_embs=[]
+                    for i in embs:
+                        word_emb = [w.vector for w in i]
+                        sent_len =  len(i)
+                        if sent_len<max_sent_len:
+                            word_emb.append([0]*(max_sent_len-sent_len))
+                        words_embs.append(word_emb)
+                    words_embs = torch.Tensor(words_embs).cuda()
+                    words_embs = words_embs.permute(0,2,1)
+                else:
+                    hidden = text_encoder.init_hidden(batch_size)
+                    # words_embs: batch_size x nef x seq_len
+                    # sent_emb: batch_size x nef
+                    # print(captions)
+                    # text_encoder = spacy.load("en_pytt_distilbertbaseuncased_lg")
+                    words_embs, sent_emb = text_encoder(captions, cap_lens, hidden) #RNN_ENCODER [14,256,12] [14,256]
+                print("Emb shapes:",words_embs.shape,sent_emb.shape)
+                print("Emb devices", words_embs.device, sent_emb.device)
                 words_embs, sent_emb = words_embs.detach(), sent_emb.detach()
                 mask = (captions == 0)
                 num_words = words_embs.size(2)
@@ -269,7 +310,7 @@ class condGANTrainer(object):
                 for i in range(len(netsD)):
                     netsD[i].zero_grad()
                     errD = discriminator_loss(netsD[i], imgs[i], fake_imgs[i],
-                                              sent_emb, real_labels, fake_labels)
+                                            sent_emb, real_labels, fake_labels)
                     # backward and update parameters
                     errD.backward()
                     optimizersD[i].step()
@@ -288,7 +329,7 @@ class condGANTrainer(object):
                 netG.zero_grad()
                 errG_total, G_logs = \
                     generator_loss(netsD, image_encoder, fake_imgs, real_labels,
-                                   words_embs, sent_emb, match_labels, cap_lens, class_ids)
+                                words_embs, sent_emb, match_labels, cap_lens, class_ids)
                 kl_loss = KL_loss(mu, logvar)
                 errG_total += kl_loss
                 G_logs += 'kl_loss: %.2f ' % kl_loss.item()
@@ -305,8 +346,8 @@ class condGANTrainer(object):
                     backup_para = copy_G_params(netG)
                     load_params(netG, avg_param_G)
                     self.save_img_results(netG, fixed_noise, sent_emb,
-                                          words_embs, mask, image_encoder,
-                                          captions, cap_lens, epoch, name='average')
+                                        words_embs, mask, image_encoder,
+                                        captions, cap_lens, epoch, name='average')
                     load_params(netG, backup_para)
                     #
                     # self.save_img_results(netG, fixed_noise, sent_emb,
@@ -316,10 +357,10 @@ class condGANTrainer(object):
             end_t = time.time()
 
             print('''[%d/%d][%d]
-                  Loss_D: %.2f Loss_G: %.2f Time: %.2fs'''
-                  % (epoch, self.max_epoch, self.num_batches,
-                     errD_total.item(), errG_total.item(),
-                     end_t - start_t))
+                Loss_D: %.2f Loss_G: %.2f Time: %.2fs'''
+                % (epoch, self.max_epoch, self.num_batches,
+                    errD_total.item(), errG_total.item(),
+                    end_t - start_t))
 
             if epoch % cfg.TRAIN.SNAPSHOT_INTERVAL == 0:  # and epoch != 0:
                 self.save_model(netG, avg_param_G, netsD, epoch)

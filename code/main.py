@@ -16,7 +16,7 @@ import numpy as np
 
 import torch
 import torchvision.transforms as transforms
-
+import spacy
 dir_path = (os.path.abspath(os.path.join(os.path.realpath(__file__), './.')))
 sys.path.append(dir_path)
 
@@ -87,7 +87,6 @@ if __name__ == "__main__":
     args = parse_args()
     if args.cfg_file is not None:
         cfg_from_file(args.cfg_file)
-
     if args.gpu_id != -1:
         cfg.GPU_ID = args.gpu_id
     else:
@@ -130,7 +129,7 @@ if __name__ == "__main__":
     assert dataset
     dataloader = torch.utils.data.DataLoader(
         dataset, batch_size=cfg.TRAIN.BATCH_SIZE,
-        drop_last=True, shuffle=bshuffle, num_workers=int(cfg.WORKERS))
+        drop_last=True, shuffle=bshuffle, num_workers=int(cfg.WORKERS)) #
 
     # Define models and go to train/evaluate
     algo = trainer(output_dir, dataloader, dataset.n_words, dataset.ixtoword)
