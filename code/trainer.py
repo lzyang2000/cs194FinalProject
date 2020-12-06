@@ -17,17 +17,17 @@ from model import G_DCGAN, G_NET, ImageCaption
 from datasets import prepare_data
 from model import RNN_ENCODER, CNN_ENCODER
 
-from miscc.losses import words_loss
-from miscc.losses import discriminator_loss, generator_loss, KL_loss
+from miscc.losses import words_loss, words_loss_bert
+from miscc.losses import discriminator_loss, generator_loss, KL_loss, generator_loss_bert
 import os
 import time
 import numpy as np
 import sys
-
+from tqdm import tqdm
 import spacy
 # if cfg.CUDA:
 #     spacy.prefer_gpu()
-#     torch.set_default_tensor_type("torch.cuda.FloatTensor")
+    # torch.set_default_tensor_type("torch.cuda.FloatTensor")
 
 # ################# Text to image task############################ #
 class condGANTrainer(object):
@@ -52,7 +52,7 @@ class condGANTrainer(object):
 
     def build_models(self):
         # ###################encoders######################################## #
-        if cfg.TRAIN.NET_E == 'BERT':
+        if cfg.TRAIN.USE_BERT:
             print('Using BERT and COCO image captions')
             text_encoder = spacy.load("en_trf_distilbertbaseuncased_lg")
             image_caption = ImageCaption() 
@@ -128,13 +128,13 @@ class condGANTrainer(object):
                     netsD[i].load_state_dict(state_dict)
         # ########################################################### #
         if cfg.CUDA: 
-            if cfg.TRAIN.NET_E != 'BERT':
+            if not cfg.TRAIN.USE_BERT:
                 text_encoder = text_encoder.cuda()
                 image_encoder = image_encoder.cuda()
             netG.cuda()
             for i in range(len(netsD)):
                 netsD[i].cuda()
-        if cfg.TRAIN.NET_E == 'BERT':
+        if cfg.TRAIN.USE_BERT:
             return [text_encoder, image_caption, netG, netsD, epoch]
         else:
             return [text_encoder, image_encoder, netG, netsD, epoch]
@@ -224,9 +224,65 @@ class condGANTrainer(object):
             fullpath = '%s/D_%s_%d.png'\
                 % (self.image_dir, name, gen_iterations)
             im.save(fullpath)
+        
+    def save_img_results_bert(self, netG, noise, sent_emb, words_embs, mask,
+                         image_caption, captions, cap_lens,
+                         gen_iterations, name='current'):
+        # Save images
+        fake_imgs, attention_maps, _, _ = netG(noise, sent_emb, words_embs, mask)
+        for i in range(len(attention_maps)):
+            if len(fake_imgs) > 1:
+                img = fake_imgs[i + 1].detach().cpu()
+                lr_img = fake_imgs[i].detach().cpu()
+            else:
+                img = fake_imgs[0].detach().cpu()
+                lr_img = None
+            attn_maps = attention_maps[i]
+            att_sze = attn_maps.size(2)
+            img_set, _ = \
+                build_super_images(img, captions, self.ixtoword,
+                                   attn_maps, att_sze, lr_imgs=lr_img)
+            if img_set is not None:
+                im = Image.fromarray(img_set)
+                fullpath = '%s/G_%s_%d_%d.png'\
+                    % (self.image_dir, name, gen_iterations, i)
+                im.save(fullpath)
+
+        # for i in range(len(netsD)):
+        i = -1
+        img = fake_imgs[i].detach()
+        # embs = text_encoder(image_caption(img)[0])
+
+        # pred_sent_emb = torch.Tensor([i.vector for i in embs]).cuda()
+        # max_sent_len = max(1,len(max(embs,key=len)))
+        # pred_words_embs=[]
+        # for i in embs:
+        #     pred_word_emb = [w.vector for w in i]
+        #     sent_len =  len(i)
+        #     if sent_len<max_sent_len:
+        #         pred_word_emb+=[0]*(max_sent_len-sent_len)
+        #     pred_words_embs.append(pred_word_emb)
+        # pred_words_embs = torch.Tensor(pred_words_embs).cuda()
+        # pred_words_embs = pred_words_embs.permute(0,2,1)
+        
+        # _, _, att_maps = words_loss_bert(pred_words_embs.detach(),
+        #                             words_embs.detach(),
+        #                             None, cap_lens,
+        #                             None, self.batch_size)
+        img_set, _ = \
+            build_super_images(fake_imgs[i].detach().cpu(),
+                               captions, self.ixtoword, np.zeros((5,5)), 5)
+        if img_set is not None:
+            im = Image.fromarray(img_set)
+            fullpath = '%s/D_%s_%d.png'\
+                % (self.image_dir, name, gen_iterations)
+            im.save(fullpath)
+        
+        
+        
 
     def train(self):
-        if cfg.TRAIN.NET_E == 'BERT':
+        if cfg.TRAIN.USE_BERT:
             text_encoder, image_caption, netG, netsD, start_epoch = self.build_models()
         else:
             text_encoder, image_encoder, netG, netsD, start_epoch = self.build_models()
@@ -243,7 +299,7 @@ class condGANTrainer(object):
 
         gen_iterations = 0
         # gen_iterations = start_epoch * self.num_batches
-        for epoch in range(start_epoch, self.max_epoch):
+        for epoch in tqdm(range(start_epoch, self.max_epoch)):
             start_t = time.time()
 
             data_iter = iter(self.data_loader)
@@ -257,7 +313,7 @@ class condGANTrainer(object):
                 ######################################################
                 data = data_iter.next()
                 imgs, captions, cap_lens, class_ids, keys = prepare_data(data)
-                if cfg.TRAIN.NET_E == 'BERT':
+                if cfg.TRAIN.USE_BERT:
                     sentence_list = []
                     for i in range(cfg.TRAIN.BATCH_SIZE):
                         cap = captions[i].data.cpu().numpy()
@@ -277,9 +333,11 @@ class condGANTrainer(object):
                         word_emb = [w.vector for w in i]
                         sent_len =  len(i)
                         if sent_len<max_sent_len:
-                            word_emb+=[0]*(max_sent_len-sent_len)
+                            word_emb+=[[0]*len(i[0].vector)]*(max_sent_len-sent_len)
                         words_embs.append(word_emb)
+                    # print(len(words_embs),len(words_embs[0]),len(words_embs[0][0]))
                     words_embs = torch.Tensor(words_embs).cuda()
+                        
                     words_embs = words_embs.permute(0,2,1)
                 else:
                     hidden = text_encoder.init_hidden(batch_size)
@@ -323,7 +381,12 @@ class condGANTrainer(object):
                 # do not need to compute gradient for Ds
                 # self.set_requires_grad_value(netsD, False)
                 netG.zero_grad()
-                errG_total, G_logs = \
+                if cfg.TRAIN.USE_BERT:
+                    errG_total, G_logs = \
+                        generator_loss_bert(netsD, image_caption, text_encoder, fake_imgs, real_labels,
+                                    words_embs, sent_emb, match_labels, cap_lens, class_ids)
+                else:
+                    errG_total, G_logs = \
                     generator_loss(netsD, image_encoder, fake_imgs, real_labels,
                                 words_embs, sent_emb, match_labels, cap_lens, class_ids)
                 kl_loss = KL_loss(mu, logvar)
@@ -341,9 +404,14 @@ class condGANTrainer(object):
                 if gen_iterations % 1000 == 0:
                     backup_para = copy_G_params(netG)
                     load_params(netG, avg_param_G)
-                    self.save_img_results(netG, fixed_noise, sent_emb,
-                                        words_embs, mask, image_encoder,
+                    if cfg.TRAIN.USE_BERT:
+                        self.save_img_results_bert(netG, fixed_noise, sent_emb,
+                                        words_embs, mask, image_caption,
                                         captions, cap_lens, epoch, name='average')
+                    else:
+                        self.save_img_results(netG, fixed_noise, sent_emb,
+                                            words_embs, mask, image_encoder,
+                                            captions, cap_lens, epoch, name='average')
                     load_params(netG, backup_para)
                     #
                     # self.save_img_results(netG, fixed_noise, sent_emb,

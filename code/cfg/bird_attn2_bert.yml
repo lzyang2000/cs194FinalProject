@@ -1,9 +1,9 @@
-CONFIG_NAME: 'glu-gan2'
+CONFIG_NAME: 'attn2'
 
-DATASET_NAME: 'coco'
-DATA_DIR: '../data/coco'
+DATASET_NAME: 'birds'
+DATA_DIR: '../data/birds'
 GPU_ID: 0
-WORKERS: 1
+WORKERS: 4
 
 
 TREE:
@@ -13,11 +13,11 @@ TREE:
 TRAIN:
     USE_BERT: True
     FLAG: True
-    NET_G: ''  # '../models/coco_AttnGAN2.pth'
+    NET_G: ''  # '../models/bird_AttnGAN2.pth'
     B_NET_D: True
-    BATCH_SIZE: 2  # 32
-    MAX_EPOCH: 120
-    SNAPSHOT_INTERVAL: 5
+    BATCH_SIZE: 2  # 22
+    MAX_EPOCH: 1
+    SNAPSHOT_INTERVAL: 50
     DISCRIMINATOR_LR: 0.0002
     GENERATOR_LR: 0.0002
     #
@@ -26,16 +26,15 @@ TRAIN:
         GAMMA1: 4.0  # 1,2,5 good 4 best  10&100bad
         GAMMA2: 5.0
         GAMMA3: 10.0  # 10good 1&100bad
-        LAMBDA: 50.0
+        LAMBDA: 5.0
 
 
 GAN:
-    DF_DIM: 96
-    GF_DIM: 48
+    DF_DIM: 64
+    GF_DIM: 32
     Z_DIM: 100
-    R_NUM: 3
+    R_NUM: 2
 
 TEXT:
     EMBEDDING_DIM: 768
-    CAPTIONS_PER_IMAGE: 5
-    WORDS_NUM: 12
+    CAPTIONS_PER_IMAGE: 10

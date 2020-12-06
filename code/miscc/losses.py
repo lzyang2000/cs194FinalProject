@@ -132,6 +132,24 @@ def words_loss(img_features, words_emb, labels,
     return loss0, loss1, att_maps
 
 
+def sent_loss_bert(pred, target, labels, class_ids,
+              batch_size, eps=1e-8):
+    # ### Mask mis-match samples  ###
+    # that come from the same class as the real sample ###
+    if labels is not None:
+        return nn.MSELoss()(pred, target)
+
+
+def words_loss_bert(pred, target, labels,
+               cap_lens, class_ids, batch_size):
+    """
+        words_emb(query): batch x nef x seq_len
+        img_features(context): batch x nef x 17 x 17
+    """
+    if labels is not None:
+        return nn.MSELoss()(pred, target)
+
+
 # ##################Loss for G and Ds##############################
 def discriminator_loss(netD, real_imgs, fake_imgs, conditions,
                        real_labels, fake_labels):
@@ -198,6 +216,65 @@ def generator_loss(netsD, image_encoder, fake_imgs, real_labels,
             s_loss0, s_loss1 = sent_loss(cnn_code, sent_emb,
                                          match_labels, class_ids, batch_size)
             s_loss = (s_loss0 + s_loss1) * \
+                cfg.TRAIN.SMOOTH.LAMBDA
+            # err_sent = err_sent + s_loss.data[0]
+
+            errG_total += w_loss + s_loss
+            logs += 'w_loss: %.2f s_loss: %.2f ' % (w_loss.item(), s_loss.item())
+    return errG_total, logs
+
+
+def generator_loss_bert(netsD, image_caption, text_encoder, fake_imgs, real_labels,
+                   words_embs, sent_emb, match_labels,
+                   cap_lens, class_ids):
+    numDs = len(netsD)
+    batch_size = real_labels.size(0)
+    logs = ''
+    # Forward
+    errG_total = 0
+    for i in range(numDs):
+        features = netsD[i](fake_imgs[i])
+        cond_logits = netsD[i].COND_DNET(features, sent_emb)
+        cond_errG = nn.BCELoss()(cond_logits, real_labels)
+        if netsD[i].UNCOND_DNET is  not None:
+            logits = netsD[i].UNCOND_DNET(features)
+            errG = nn.BCELoss()(logits, real_labels)
+            g_loss = errG + cond_errG
+        else:
+            g_loss = cond_errG
+        errG_total += g_loss
+        # err_img = errG_total.data[0]
+        logs += 'g_loss%d: %.2f ' % (i, g_loss.item())
+
+        # Ranking loss
+        if i == (numDs - 1):
+            # words_features: batch_size x nef x 17 x 17
+            # sent_code: batch_size x nef
+            embs = text_encoder(image_caption(fake_imgs[i]))[0]
+
+            pred_sent_emb = torch.Tensor(np.array([i.vector for i in embs])).cuda()
+            max_sent_len = max(1,len(max(embs,key=len)))
+            pred_words_embs=[]
+            for i in embs:
+                pred_word_emb = [w.vector for w in i]
+                sent_len =  len(i)
+                if sent_len<max_sent_len:
+                    pred_word_emb+=[[0]*len(i[0].vector)]*(max_sent_len-sent_len)
+                pred_words_embs.append(pred_word_emb)
+            pred_words_embs = torch.Tensor(np.array(pred_words_embs)).cuda()
+            pred_words_embs = pred_words_embs.permute(0,2,1)
+
+
+            w_loss  = words_loss(pred_words_embs, words_embs,
+                                             match_labels, cap_lens,
+                                             class_ids, batch_size)
+            w_loss = w_loss * \
+                cfg.TRAIN.SMOOTH.LAMBDA
+            # err_words = err_words + w_loss.data[0]
+
+            s_loss = sent_loss(pred_sent_emb, sent_emb,
+                                         match_labels, class_ids, batch_size)
+            s_loss = s_loss * \
                 cfg.TRAIN.SMOOTH.LAMBDA
             # err_sent = err_sent + s_loss.data[0]
 

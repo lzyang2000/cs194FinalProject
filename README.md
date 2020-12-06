@@ -37,7 +37,7 @@ In addition, please add the project folder to PYTHONPATH and `pip install` the f
 - Train AttnGAN models:
   - For bird dataset: `python main.py --cfg cfg/bird_attn2.yml --gpu 2`
   - For coco dataset: `python main.py --cfg cfg/coco_attn2.yml --gpu 3`
-
+  - For BERT: `python main.py --cfg cfg/bird_attn2_bert.yml --gpu 0`
 - `*.yml` files are example configuration files for training/evaluation our models.
 
 

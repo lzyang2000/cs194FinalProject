@@ -5,7 +5,7 @@ from torch.autograd import Variable
 from torchvision import models
 import torch.utils.model_zoo as model_zoo
 import torch.nn.functional as F
-
+from PIL import Image
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
 from miscc.config import cfg
@@ -81,9 +81,13 @@ class FeatureExtractor:
         return path
 
     def _image_transform(self, image):
-        img = image
+        img = image.cpu()
         im = np.array(img).astype(np.float32)
+        print(im.shape)
+        Image.fromarray(im).save('a.jpg')
         im = im[:, :, ::-1]
+        Image.fromarray(im).save('b.jpg')
+        quit()
         im -= np.array([102.9801, 115.9465, 122.7717])
         im_shape = im.shape
         im_size_min = np.min(im_shape[0:2])
