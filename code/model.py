@@ -81,13 +81,9 @@ class FeatureExtractor:
         return path
 
     def _image_transform(self, image):
-        img = image.cpu()
+        img = image.permute(1,2,0).cpu()
         im = np.array(img).astype(np.float32)
-        print(im.shape)
-        Image.fromarray(im).save('a.jpg')
         im = im[:, :, ::-1]
-        Image.fromarray(im).save('b.jpg')
-        quit()
         im -= np.array([102.9801, 115.9465, 122.7717])
         im_shape = im.shape
         im_size_min = np.min(im_shape[0:2])
@@ -161,9 +157,11 @@ class ImageCaption:
         self.model.load_state_dict(torch.load('../models/image_caption_pretrained/caption/model-best.pth'))
     def __call__(self, img):
         # Return the 5 captions from beam serach with beam size 5
-        img_feature = self.feature_extractor(img)
-        return self.model.decode_sequence(self.model(img_feature.mean(0)[None], img_feature[None], mode='sample', opt={'beam_size':5, 'sample_method':'beam_search', 'sample_n':5})[0])
-
+        ret_list = []
+        for i in range(img.shape[0]):
+            img_feature = self.feature_extractor(img[i])
+            ret_list.append(self.model.decode_sequence(self.model(img_feature.mean(0)[None], img_feature[None], mode='sample', opt={'beam_size':5, 'sample_method':'beam_search', 'sample_n':5})[0])[0])
+        return ret_list
 #####################################################################################
 class GLU(nn.Module):
     def __init__(self):

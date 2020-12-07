@@ -76,6 +76,7 @@ class FeatureExtractor:
            interpolation=cv2.INTER_LINEAR
        )
       img = torch.from_numpy(im).permute(2, 0, 1)
+      print(img.shape)
       return img, im_scale
 
 

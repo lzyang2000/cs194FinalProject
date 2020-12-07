@@ -147,6 +147,15 @@ def words_loss_bert(pred, target, labels,
         img_features(context): batch x nef x 17 x 17
     """
     if labels is not None:
+        max_sent_len=max(pred.shape[2],target.shape[2])
+        min_sent_len=min(pred.shape[2],target.shape[2])
+        pad = torch.zeros_like(torch.empty(pred.shape[0],pred.shape[1],max_sent_len - min_sent_len)).cuda()
+        if pred.shape[2]<max_sent_len:
+            pred = torch.cat((pred,pad),2)
+        if target.shape[2]< max_sent_len:
+            target = torch.cat((target,pad),2)
+
+
         return nn.MSELoss()(pred, target)
 
 
@@ -250,7 +259,7 @@ def generator_loss_bert(netsD, image_caption, text_encoder, fake_imgs, real_labe
         if i == (numDs - 1):
             # words_features: batch_size x nef x 17 x 17
             # sent_code: batch_size x nef
-            embs = text_encoder(image_caption(fake_imgs[i]))[0]
+            embs = list(text_encoder.pipe(image_caption(fake_imgs[i])))
 
             pred_sent_emb = torch.Tensor(np.array([i.vector for i in embs])).cuda()
             max_sent_len = max(1,len(max(embs,key=len)))
@@ -265,14 +274,14 @@ def generator_loss_bert(netsD, image_caption, text_encoder, fake_imgs, real_labe
             pred_words_embs = pred_words_embs.permute(0,2,1)
 
 
-            w_loss  = words_loss(pred_words_embs, words_embs,
+            w_loss  = words_loss_bert(pred_words_embs, words_embs,
                                              match_labels, cap_lens,
                                              class_ids, batch_size)
             w_loss = w_loss * \
                 cfg.TRAIN.SMOOTH.LAMBDA
             # err_words = err_words + w_loss.data[0]
 
-            s_loss = sent_loss(pred_sent_emb, sent_emb,
+            s_loss = sent_loss_bert(pred_sent_emb, sent_emb,
                                          match_labels, class_ids, batch_size)
             s_loss = s_loss * \
                 cfg.TRAIN.SMOOTH.LAMBDA
