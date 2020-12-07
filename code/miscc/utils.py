@@ -106,16 +106,17 @@ def build_super_images(real_imgs, captions, ixtoword,
 
     bUpdate = 1
     for i in range(num):
-        attn = attn_maps[i].cpu().view(1, -1, att_sze, att_sze)
-        # --> 1 x 1 x 17 x 17
-        attn_max = attn.max(dim=1, keepdim=True)
-        attn = torch.cat([attn_max[0], attn], 1)
-        #
-        attn = attn.view(-1, 1, att_sze, att_sze)
-        attn = attn.repeat(1, 3, 1, 1).data.numpy()
-        # n x c x h x w --> n x h x w x c
-        attn = np.transpose(attn, (0, 2, 3, 1))
-        num_attn = attn.shape[0]
+        if torch.is_tensor(attn_maps[0]):
+            attn = attn_maps[i].cpu().view(1, -1, att_sze, att_sze)
+            # --> 1 x 1 x 17 x 17
+            attn_max = attn.max(dim=1, keepdim=True)
+            attn = torch.cat([attn_max[0], attn], 1)
+            #
+            attn = attn.view(-1, 1, att_sze, att_sze)
+            attn = attn.repeat(1, 3, 1, 1).data.numpy()
+            # n x c x h x w --> n x h x w x c
+            attn = np.transpose(attn, (0, 2, 3, 1))
+            num_attn = attn.shape[0]
         #
         img = real_imgs[i]
         if lr_imgs is None:
@@ -126,38 +127,47 @@ def build_super_images(real_imgs, captions, ixtoword,
         row_merge = [img, middle_pad]
         row_beforeNorm = []
         minVglobal, maxVglobal = 1, 0
-        for j in range(num_attn):
-            one_map = attn[j]
-            if (vis_size // att_sze) > 1:
-                one_map = \
-                    skimage.transform.pyramid_expand(one_map, sigma=20,
-                                                     upscale=vis_size // att_sze,
-                                                     multichannel=True)
-            row_beforeNorm.append(one_map)
-            minV = one_map.min()
-            maxV = one_map.max()
-            if minVglobal > minV:
-                minVglobal = minV
-            if maxVglobal < maxV:
-                maxVglobal = maxV
+        if torch.is_tensor(attn_maps[0]):
+            for j in range(num_attn):
+                one_map = attn[j]
+                if (vis_size // att_sze) > 1:
+                    one_map = \
+                        skimage.transform.pyramid_expand(one_map, sigma=20,
+                                                        upscale=vis_size // att_sze,
+                                                        multichannel=True)
+                row_beforeNorm.append(one_map)
+                minV = one_map.min()
+                maxV = one_map.max()
+                if minVglobal > minV:
+                    minVglobal = minV
+                if maxVglobal < maxV:
+                    maxVglobal = maxV
         for j in range(seq_len + 1):
-            if j < num_attn:
-                one_map = row_beforeNorm[j]
-                one_map = (one_map - minVglobal) / (maxVglobal - minVglobal)
-                one_map *= 255
-                #
+            if torch.is_tensor(attn_maps[0]):
+                if j < num_attn:
+                    one_map = row_beforeNorm[j]
+                    one_map = (one_map - minVglobal) / (maxVglobal - minVglobal)
+                    one_map *= 255
+                    #
+                    PIL_im = Image.fromarray(np.uint8(img))
+                    PIL_att = Image.fromarray(np.uint8(one_map))
+                    merged = \
+                        Image.new('RGBA', (vis_size, vis_size), (0, 0, 0, 0))
+                    mask = Image.new('L', (vis_size, vis_size), (210))
+                    merged.paste(PIL_im, (0, 0))
+                    merged.paste(PIL_att, (0, 0), mask)
+                    merged = np.array(merged)[:, :, :3]
+                else:
+                    one_map = post_pad
+                    merged = post_pad
+            else:
                 PIL_im = Image.fromarray(np.uint8(img))
-                PIL_att = Image.fromarray(np.uint8(one_map))
                 merged = \
                     Image.new('RGBA', (vis_size, vis_size), (0, 0, 0, 0))
-                mask = Image.new('L', (vis_size, vis_size), (210))
                 merged.paste(PIL_im, (0, 0))
-                merged.paste(PIL_att, (0, 0), mask)
                 merged = np.array(merged)[:, :, :3]
-            else:
-                one_map = post_pad
-                merged = post_pad
-            row.append(one_map)
+            if torch.is_tensor(attn_maps[0]):
+                row.append(one_map)
             row.append(middle_pad)
             #
             row_merge.append(merged)
