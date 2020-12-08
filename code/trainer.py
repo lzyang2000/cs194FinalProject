@@ -230,7 +230,7 @@ class condGANTrainer(object):
                          gen_iterations, name='current'):
         # Save images
         fake_imgs, attention_maps, _, _ = netG(noise, sent_emb, words_embs, mask)
-        for i in range(len(fake_imgs)-1):
+        for i in range(len(fake_imgs)):
             if len(fake_imgs) > 1:
                 img = fake_imgs[i + 1].detach().cpu()
                 lr_img = fake_imgs[i].detach().cpu()
@@ -247,37 +247,6 @@ class condGANTrainer(object):
                 fullpath = '%s/G_%s_%d_%d.png'\
                     % (self.image_dir, name, gen_iterations, i)
                 im.save(fullpath)
-
-        # for i in range(len(netsD)):
-        i = -1
-        img = fake_imgs[i].detach()
-        # embs = text_encoder(image_caption(img)[0])
-
-        # pred_sent_emb = torch.Tensor([i.vector for i in embs]).cuda()
-        # max_sent_len = max(1,len(max(embs,key=len)))
-        # pred_words_embs=[]
-        # for i in embs:
-        #     pred_word_emb = [w.vector for w in i]
-        #     sent_len =  len(i)
-        #     if sent_len<max_sent_len:
-        #         pred_word_emb+=[0]*(max_sent_len-sent_len)
-        #     pred_words_embs.append(pred_word_emb)
-        # pred_words_embs = torch.Tensor(pred_words_embs).cuda()
-        # pred_words_embs = pred_words_embs.permute(0,2,1)
-        
-        # _, _, att_maps = words_loss_bert(pred_words_embs.detach(),
-        #                             words_embs.detach(),
-        #                             None, cap_lens,
-        #                             None, self.batch_size)
-        img_set, _ = \
-            build_super_images(fake_imgs[i].detach().cpu(),
-                               captions, self.ixtoword, np.zeros((5,5)), 5)
-        if img_set is not None:
-            im = Image.fromarray(img_set)
-            fullpath = '%s/D_%s_%d.png'\
-                % (self.image_dir, name, gen_iterations)
-            im.save(fullpath)
-        
         
         
 
