@@ -230,9 +230,9 @@ class condGANTrainer(object):
                          gen_iterations, name='current'):
         # Save images
         fake_imgs, attention_maps, _, _ = netG(noise, sent_emb, words_embs, mask)
-        for i in range(len(fake_imgs)):
+        for i in range(len(fake_imgs)-1):
             if len(fake_imgs) > 1:
-                img = fake_imgs[i + 1].detach().cpu()
+                img = fake_imgs[i+1].detach().cpu()
                 lr_img = fake_imgs[i].detach().cpu()
             else:
                 img = fake_imgs[0].detach().cpu()
