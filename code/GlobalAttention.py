@@ -108,7 +108,7 @@ class GlobalAttentionGeneral(nn.Module):
             if attn.shape[1]<mask.shape[1]:
                 mask = mask[:,mask.shape[1]-(mask.shape[1]-attn.shape[1])]
             elif attn.shape[1]>mask.shape[1]:
-                padd = torch.zeros_like(torch.empty(mask.shape[0],attn.shape[1]-mask.shape[1]))
+                padd = torch.zeros_like(torch.empty(mask.shape[0],attn.shape[1]-mask.shape[1])).cuda()
                 mask = torch.cat((mask,padd),1)
 
 
