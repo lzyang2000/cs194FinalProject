@@ -105,7 +105,7 @@ class GlobalAttentionGeneral(nn.Module):
         if self.mask is not None:
             # batch_size x sourceL --> batch_size*queryL x sourceL
             mask = self.mask.repeat(queryL, 1)
-            print(att.shape)
+            print(attn.shape)
             print(mask.shape)
             attn.data.masked_fill_(mask.data, -float('inf'))
         attn = self.sm(attn)  # Eq. (2)
