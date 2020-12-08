@@ -5,3 +5,5 @@ code/miscc/*.pyc
 .DS_Store
 .idea/
 .vscode/
+pythonenv3.8
+*.pyc
