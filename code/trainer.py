@@ -175,7 +175,7 @@ class condGANTrainer(object):
         #
         for i in range(len(netsD)):
             netD = netsD[i]
-            torch.save(netD.state_diFct(),
+            torch.save(netD.state_dict(),
                 '%s/netD%d.pth' % (self.model_dir, i))
         print('Save G/Ds models.')
 
